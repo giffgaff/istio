@@ -1,0 +1,40 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+  name: istio-operator
+spec:
+  profile: demo
+  components:
+    egressGateways:
+    - enabled: false
+    sidecarInjector:
+      enabled: true
+
+  addonComponents:
+    prometheus:
+      k8s:
+        resources:
+          limits:
+            memory: 1Gi
+    tracing:
+      k8s:
+        resources:
+          limits:
+            memory: 1Gi
+  values:
+    prometheus:
+      ingress:
+        enabled: true
+        hosts:
+          - prometheus.snd.gaff.systems
+      contextPath: /
+    kiali:
+      prometheusAddr: http://prometheus:9090
+      dashboard:
+        grafanaURL: http://grafana.istio-system:3000
+        jaegerURL: https://jaeger.snd.gaff.systems
+        jaegerInClusterURL: http://tracing.istio-system/jaeger
+    gateways:
+      istio-ingressgateway:
+        loadBalancerSourceRanges: ["167.98.102.254/32"]
