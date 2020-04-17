@@ -1,0 +1,51 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+  name: istio-operator
+spec:
+  profile: default
+  components:
+    sidecarInjector:
+      enabled: true
+    pilot:
+      k8s:
+        env:
+          - name: PILOT_TRACE_SAMPLING
+            value: "100"
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+
+  values:
+    global:
+      tracer:
+        zipkin:
+          address: "jaeger-instance-collector.tracing:9411"
+      proxy:
+        excludeIPRanges: "169.254.169.254/32"
+        logLevel: info
+
+    kiali:
+      ingress:
+        annotations:
+          nginx.ingress.kubernetes.io/service-upstream: "true"
+          nginx.ingress.kubernetes.io/upstream-vhost: kiali.istio-system
+        hosts:
+          - kiali.stg.gaff.systems
+      prometheusAddr: http://prometheus-server.monitoring:9090
+      dashboard:
+        grafanaURL: https://grafana.stg.gaff.systems
+        jaegerURL: https://jaeger.stg.gaff.systems
+        jaegerInClusterURL: http://jaeger-instance-query.tracing
+    gateways:
+      istio-ingressgateway:
+        loadBalancerSourceRanges: ["167.98.102.254/32"]
+  

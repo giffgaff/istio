@@ -1,0 +1,66 @@
+---
+apiVersion: v1
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  labels:
+    app: kiali
+    operator.istio.io/component: AddonComponents
+    operator.istio.io/managed: Reconcile
+    operator.istio.io/version: 1.5.1
+    release: istio
+  name: kiali
+  namespace: istio-system
+spec:
+  rules:
+  - host: kiali.snd.gaff.systems
+    http:
+      paths:
+      - backend:
+          serviceName: kiali
+          servicePort: 20001
+        path: /
+---
+apiVersion: v1
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  labels:
+    app: grafana
+    operator.istio.io/component: AddonComponents
+    operator.istio.io/managed: Reconcile
+    operator.istio.io/version: 1.5.1
+    release: istio
+  name: grafana
+  namespace: istio-system
+spec:
+  rules:
+  - host: grafana.snd.gaff.systems
+    http:
+      paths:
+      - backend:
+          serviceName: grafana
+          servicePort: 3000
+        path: /
+---
+apiVersion: v1
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  labels:
+    app: jaeger
+    operator.istio.io/component: AddonComponents
+    operator.istio.io/managed: Reconcile
+    operator.istio.io/version: 1.5.1
+    release: istio
+  name: jaeger
+  namespace: istio-system
+spec:
+  rules:
+  - host: jaeger.snd.gaff.systems
+    http:
+      paths:
+      - backend:
+          serviceName: tracing
+          servicePort: 16686
+        path: /
