@@ -486,8 +486,6 @@ func TestValidateProxyConfig(t *testing.T) {
 							Lightstep: &meshconfig.Tracing_Lightstep{
 								Address:     "collector.lightstep:8080",
 								AccessToken: "abcdefg1234567",
-								Secure:      false,
-								CacertPath:  "/etc/lightstep/cacert.pem",
 							},
 						},
 					}
@@ -504,8 +502,6 @@ func TestValidateProxyConfig(t *testing.T) {
 							Lightstep: &meshconfig.Tracing_Lightstep{
 								Address:     "10.0.0.100",
 								AccessToken: "abcdefg1234567",
-								Secure:      false,
-								CacertPath:  "/etc/lightstep/cacert.pem",
 							},
 						},
 					}
@@ -522,8 +518,6 @@ func TestValidateProxyConfig(t *testing.T) {
 							Lightstep: &meshconfig.Tracing_Lightstep{
 								Address:     "",
 								AccessToken: "abcdefg1234567",
-								Secure:      false,
-								CacertPath:  "/etc/lightstep/cacert.pem",
 							},
 						},
 					}
@@ -540,8 +534,6 @@ func TestValidateProxyConfig(t *testing.T) {
 							Lightstep: &meshconfig.Tracing_Lightstep{
 								Address:     "collector.lightstep:8080",
 								AccessToken: "",
-								Secure:      false,
-								CacertPath:  "/etc/lightstep/cacert.pem",
 							},
 						},
 					}
@@ -558,8 +550,6 @@ func TestValidateProxyConfig(t *testing.T) {
 							Lightstep: &meshconfig.Tracing_Lightstep{
 								Address:     "10.0.0.100",
 								AccessToken: "",
-								Secure:      false,
-								CacertPath:  "/etc/lightstep/cacert.pem",
 							},
 						},
 					}
@@ -576,26 +566,6 @@ func TestValidateProxyConfig(t *testing.T) {
 							Lightstep: &meshconfig.Tracing_Lightstep{
 								Address:     "",
 								AccessToken: "",
-								Secure:      false,
-								CacertPath:  "/etc/lightstep/cacert.pem",
-							},
-						},
-					}
-				},
-			),
-			isValid: false,
-		},
-		{
-			name: "lightstep cacert is missing",
-			in: modify(valid,
-				func(c *meshconfig.ProxyConfig) {
-					c.Tracing = &meshconfig.Tracing{
-						Tracer: &meshconfig.Tracing_Lightstep_{
-							Lightstep: &meshconfig.Tracing_Lightstep{
-								Address:     "collector.lightstep:8080",
-								AccessToken: "abcdefg1234567",
-								Secure:      true,
-								CacertPath:  "",
 							},
 						},
 					}
@@ -3165,7 +3135,7 @@ func TestValidateEnvoyFilter(t *testing.T) {
 						Operation: networking.EnvoyFilter_Patch_ADD,
 						Value: &types.Struct{
 							Fields: map[string]*types.Value{
-								"foo": {
+								"hosts": {
 									Kind: &types.Value_BoolValue{BoolValue: false},
 								},
 							},
@@ -3173,7 +3143,7 @@ func TestValidateEnvoyFilter(t *testing.T) {
 					},
 				},
 			},
-		}, error: `Envoy filter: unknown field "foo" in envoy_api_v2.Cluster`},
+		}, error: `Envoy filter: json: cannot unmarshal bool into Go value of type []json.RawMessage`},
 		{name: "happy config", in: &networking.EnvoyFilter{
 			ConfigPatches: []*networking.EnvoyFilter_EnvoyConfigObjectPatch{
 				{
@@ -5894,6 +5864,46 @@ func TestValidatePeerAuthentication(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := ValidatePeerAuthentication(c.configName, someNamespace, c.in); (got == nil) != c.valid {
+				t.Errorf("got(%v) != want(%v)\n", got, c.valid)
+			}
+		})
+	}
+}
+
+func TestServiceSettings(t *testing.T) {
+	cases := []struct {
+		name  string
+		hosts []string
+		valid bool
+	}{
+		{
+			name: "good",
+			hosts: []string{
+				"*.foo.bar",
+				"bar.baz.svc.cluster.local",
+			},
+			valid: true,
+		},
+		{
+			name: "bad",
+			hosts: []string{
+				"foo.bar.*",
+			},
+			valid: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := meshconfig.MeshConfig{
+				ServiceSettings: []*meshconfig.MeshConfig_ServiceSettings{
+					{
+						Hosts: c.hosts,
+					},
+				},
+			}
+
+			if got := validateServiceSettings(&m); (got == nil) != c.valid {
 				t.Errorf("got(%v) != want(%v)\n", got, c.valid)
 			}
 		})

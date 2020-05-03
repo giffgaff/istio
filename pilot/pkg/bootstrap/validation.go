@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"istio.io/istio/pilot/pkg/model"
+
 	"k8s.io/client-go/dynamic"
 
 	"istio.io/pkg/env"
@@ -26,6 +28,7 @@ import (
 	"istio.io/istio/galley/pkg/config/source/kube"
 	"istio.io/istio/mixer/pkg/validate"
 	"istio.io/istio/pilot/pkg/features"
+	"istio.io/istio/pilot/pkg/leaderelection"
 	"istio.io/istio/pkg/config/schema/collections"
 	"istio.io/istio/pkg/webhooks/validation/controller"
 	"istio.io/istio/pkg/webhooks/validation/server"
@@ -54,8 +57,8 @@ func (s *Server) initConfigValidation(args *PilotArgs) error {
 		MixerValidator: validate.NewDefaultValidator(false),
 		Schemas:        collections.Istio,
 		DomainSuffix:   args.Config.ControllerOptions.DomainSuffix,
-		CertFile:       filepath.Join(dnsCertDir, "cert-chain.pem"),
-		KeyFile:        filepath.Join(dnsCertDir, "key.pem"),
+		CertFile:       model.GetOrDefault(args.TLSOptions.CertFile, filepath.Join(dnsCertDir, "cert-chain.pem")),
+		KeyFile:        model.GetOrDefault(args.TLSOptions.KeyFile, filepath.Join(dnsCertDir, "key.pem")),
 		Mux:            s.httpsMux,
 	}
 	whServer, err := server.New(params)
@@ -105,10 +108,15 @@ func (s *Server) initConfigValidation(args *PilotArgs) error {
 		if err != nil {
 			return err
 		}
-
-		s.leaderElection.AddRunFunction(func(stop <-chan struct{}) {
-			log.Infof("Starting validation controller")
-			whController.Start(stop)
+		s.addTerminatingStartFunc(func(stop <-chan struct{}) error {
+			leaderelection.
+				NewLeaderElection(args.Namespace, args.PodName, leaderelection.ValidationController, s.kubeClient).
+				AddRunFunction(func(stop <-chan struct{}) {
+					log.Infof("Starting validation controller")
+					whController.Start(stop)
+				}).
+				Run(stop)
+			return nil
 		})
 	}
 	return nil

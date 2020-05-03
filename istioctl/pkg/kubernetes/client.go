@@ -27,8 +27,7 @@ import (
 	"os/signal"
 	"strings"
 
-	multierror "github.com/hashicorp/go-multierror"
-
+	"github.com/hashicorp/go-multierror"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -37,10 +36,12 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/client-go/transport/spdy"
 
-	"istio.io/istio/istioctl/pkg/clioptions"
-	"istio.io/istio/pilot/pkg/model"
-	"istio.io/istio/pkg/kube"
+	"istio.io/api/label"
+
 	"istio.io/pkg/version"
+
+	"istio.io/istio/istioctl/pkg/clioptions"
+	"istio.io/istio/pkg/kube"
 )
 
 var (
@@ -201,10 +202,10 @@ func (client *Client) EnvoyDo(podName, podNamespace, method, path string, body [
 func (client *Client) ExtractExecResult(podName, podNamespace, container string, cmd []string) ([]byte, error) {
 	stdout, stderr, err := client.PodExec(podName, podNamespace, container, cmd)
 	if err != nil {
-		if stderr.String() != "" {
-			return nil, fmt.Errorf("error execing into %v/%v %v container: %v\n%s", podName, podNamespace, container, err, stderr.String())
+		if stderr != nil && stderr.String() != "" {
+			return nil, fmt.Errorf("error exec'ing into %s/%s %s container: %v\n%s", podName, podNamespace, container, err, stderr.String())
 		}
-		return nil, fmt.Errorf("error execing into %v/%v %v container: %v", podName, podNamespace, container, err)
+		return nil, fmt.Errorf("error exec'ing into %s/%s %s container: %v", podName, podNamespace, container, err)
 	}
 	return stdout.Bytes(), nil
 }
@@ -214,9 +215,9 @@ func (client *Client) GetIstioPods(namespace string, params map[string]string) (
 	if client.Revision != "" {
 		labelSelector, ok := params["labelSelector"]
 		if ok {
-			params["labelSelector"] = fmt.Sprintf("%s,%s=%s", labelSelector, model.RevisionLabel, client.Revision)
+			params["labelSelector"] = fmt.Sprintf("%s,%s=%s", labelSelector, label.IstioRev, client.Revision)
 		} else {
-			params["labelSelector"] = fmt.Sprintf("%s=%s", model.RevisionLabel, client.Revision)
+			params["labelSelector"] = fmt.Sprintf("%s=%s", label.IstioRev, client.Revision)
 		}
 	}
 
@@ -267,10 +268,10 @@ type podDetail struct {
 	container string
 }
 
-// GetIstioVersions gets the version for each Istio component
+// GetIstioVersions gets the version for each Istio control plane component
 func (client *Client) GetIstioVersions(namespace string) (*version.MeshInfo, error) {
 	pods, err := client.GetIstioPods(namespace, map[string]string{
-		"labelSelector": "istio",
+		"labelSelector": "istio,istio!=ingressgateway,istio!=egressgateway,istio!=ilbgateway",
 		"fieldSelector": "status.phase=Running",
 	})
 	if err != nil {
@@ -280,14 +281,12 @@ func (client *Client) GetIstioVersions(namespace string) (*version.MeshInfo, err
 		return nil, fmt.Errorf("no running Istio pods in %q", namespace)
 	}
 
+	// exclude data plane components from control plane list
 	labelToPodDetail := map[string]podDetail{
 		"pilot":            {"/usr/local/bin/pilot-discovery", "discovery"},
 		"istiod":           {"/usr/local/bin/pilot-discovery", "discovery"},
 		"citadel":          {"/usr/local/bin/istio_ca", "citadel"},
-		"egressgateway":    {"/usr/local/bin/pilot-agent", "istio-proxy"},
 		"galley":           {"/usr/local/bin/galley", "galley"},
-		"ingressgateway":   {"/usr/local/bin/pilot-agent", "istio-proxy"},
-		"ilbgateway":       {"/usr/local/bin/pilot-agent", "istio-proxy"},
 		"telemetry":        {"/usr/local/bin/mixs", "mixer"},
 		"policy":           {"/usr/local/bin/mixs", "mixer"},
 		"sidecar-injector": {"/usr/local/bin/sidecar-injector", "sidecar-injector-webhook"},
@@ -318,7 +317,7 @@ func (client *Client) GetIstioVersions(namespace string) (*version.MeshInfo, err
 			stdout, stderr, err := client.PodExec(pod.Name, pod.Namespace, detail.container, cmdJSON)
 
 			if err != nil {
-				errs = multierror.Append(errs, fmt.Errorf("error execing into %v %v container: %v", pod.Name, detail.container, err))
+				errs = multierror.Append(errs, fmt.Errorf("error exec'ing into %s %s container: %v", pod.Name, detail.container, err))
 				continue
 			}
 
@@ -331,7 +330,7 @@ func (client *Client) GetIstioVersions(namespace string) (*version.MeshInfo, err
 				if strings.HasPrefix(stderr.String(), "Error: unknown shorthand flag") {
 					stdout, err := client.ExtractExecResult(pod.Name, pod.Namespace, detail.container, cmd)
 					if err != nil {
-						errs = multierror.Append(errs, fmt.Errorf("error execing into %v %v container: %v", pod.Name, detail.container, err))
+						errs = multierror.Append(errs, fmt.Errorf("error exec'ing into %s %s container: %v", pod.Name, detail.container, err))
 						continue
 					}
 
@@ -341,7 +340,7 @@ func (client *Client) GetIstioVersions(namespace string) (*version.MeshInfo, err
 						continue
 					}
 				} else {
-					errs = multierror.Append(errs, fmt.Errorf("error execing into %v %v container: %v", pod.Name, detail.container, stderr.String()))
+					errs = multierror.Append(errs, fmt.Errorf("error execing into %s %s container: %v", pod.Name, detail.container, stderr.String()))
 					continue
 				}
 			}

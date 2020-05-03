@@ -1103,9 +1103,6 @@ func ValidateLightstepCollector(ls *meshconfig.Tracing_Lightstep) error {
 	if ls.GetAccessToken() == "" {
 		errs = multierror.Append(errs, errors.New("access token is required"))
 	}
-	if ls.GetSecure() && (ls.GetCacertPath() == "") {
-		errs = multierror.Append(errs, errors.New("cacertPath is required"))
-	}
 	return errs
 }
 
@@ -1184,6 +1181,21 @@ func ValidateMeshConfig(mesh *meshconfig.MeshConfig) (errs error) {
 		errs = multierror.Append(errs, err)
 	}
 
+	if err := validateServiceSettings(mesh); err != nil {
+		errs = multierror.Append(errs, err)
+	}
+
+	return
+}
+
+func validateServiceSettings(config *meshconfig.MeshConfig) (errs error) {
+	for sIndex, s := range config.ServiceSettings {
+		for _, h := range s.Hosts {
+			if err := ValidateWildcardDomain(h); err != nil {
+				errs = multierror.Append(errs, fmt.Errorf("serviceSettings[%d], host `%s`: %v", sIndex, h, err))
+			}
+		}
+	}
 	return
 }
 
@@ -1229,6 +1241,12 @@ func ValidateProxyConfig(config *meshconfig.ProxyConfig) (errs error) {
 	if tracer := config.GetTracing().GetDatadog(); tracer != nil {
 		if err := ValidateDatadogCollector(tracer); err != nil {
 			errs = multierror.Append(errs, multierror.Prefix(err, "invalid datadog config:"))
+		}
+	}
+
+	if tracer := config.GetTracing().GetTlsSettings(); tracer != nil {
+		if err := validateTLS(tracer); err != nil {
+			errs = multierror.Append(errs, multierror.Prefix(err, "invalid tracing TLS config:"))
 		}
 	}
 
